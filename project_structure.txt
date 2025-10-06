@@ -1,0 +1,58 @@
+
+detoxify-project/
+│
+├── .github/
+│   └── workflows/
+│       ├── ci-testing.yml
+│       ├── pyright.yml
+│       └── update_wheels.yml
+│
+├── configs/
+│   ├── Multilingual_toxic_comment_classification_XLMR_stage2.json
+│   ├── Multilingual_toxic_comment_classification_XLMR.json
+│   ├── Toxic_comment_classification_ALBERT.json
+│   ├── Toxic_comment_classification_BERT.json
+│   ├── Toxic_comment_classification_ModernBERT.json
+│   ├── Unintended_bias_toxic_comment_classification_Albert.json
+│   ├── Unintended_bias_toxic_comment_classification_RoBERTa_combined.json
+│   └── Unintended_bias_toxic_comment_classification_RoBERTa.json
+│
+├── detoxify/
+│   ├── __init__.py
+│   └── detoxify.py
+│
+├── model_eval/
+│   ├── compute_bias_metric.py
+│   ├── compute_language_breakdown.py
+│   ├── evaluate.py
+│   └── utils.py
+│
+├── src/
+│   ├── __init__.py
+│   ├── data_loaders.py
+│   └── utils.py
+│
+├── tests/
+│   ├── dummy_data/
+│   │   └── jigsaw-toxic-comment-classification-challenge/
+│   │       ├── test.csv
+│   │       └── train.csv
+│   ├── __init__.py
+│   ├── test_models.py
+│   ├── test_torch_hub.py
+│   └── test_trainer.py
+│
+├── .gitignore
+├── .pre-commit-config.yaml
+├── CITATION.cff
+├── CONTRIBUTING.md
+├── convert_weights.py
+├── examples.png
+├── hubconf.py
+├── LICENSE
+├── preprocessing_utils.py
+├── pyproject.toml
+├── README.md
+├── requirements.txt
+├── run_prediction.py
+└── train.py

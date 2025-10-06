@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🛡️ Toxicity Detection System</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+  </head>
+  <body>
+    <!-- Animated Background -->
+    <div class="bg-animation">
+      <div class="circle circle-1"></div>
+      <div class="circle circle-2"></div>
+      <div class="circle circle-3"></div>
+    </div>
+
+    <div class="container">
+      <!-- Header Section -->
+      <header class="header">
+        <div class="logo">
+          <i class="fas fa-shield-alt"></i>
+        </div>
+        <h1 class="title">Toxicity Detection System</h1>
+        <p class="subtitle">
+          AI-Powered Content Moderation with Toxic Word Reduction
+        </p>
+        <div class="tech-stack">
+          <span class="tech-badge">Python</span>
+          <span class="tech-badge">PyTorch</span>
+          <span class="tech-badge">BERT</span>
+          <span class="tech-badge">Flask</span>
+        </div>
+      </header>
+
+      <!-- Input Section -->
+      <div class="input-section glass-effect">
+        <div class="input-header">
+          <i class="fas fa-keyboard"></i>
+          <h2>Enter Text to Analyze</h2>
+        </div>
+        <textarea
+          id="textInput"
+          placeholder="Type or paste your text here to analyze for toxic content..."
+          rows="6"
+        ></textarea>
+        <div class="char-count" id="charCount">0 characters</div>
+
+        <button id="analyzeBtn" class="analyze-btn" onclick="analyzeText()">
+          <i class="fas fa-search"></i>
+          <span>Analyze Text</span>
+        </button>
+
+        <!-- Example Buttons -->
+        <div class="examples">
+          <p class="examples-title">Quick Examples:</p>
+          <button
+            class="example-btn safe"
+            onclick="setExample('I love this product! It works great!')"
+          >
+            <i class="fas fa-check-circle"></i> Positive
+          </button>
+          <button
+            class="example-btn toxic"
+            onclick="setExample('You Bastard! You worthless piece of garbage!')"
+          >
+            <i class="fas fa-exclamation-triangle"></i> Toxic
+          </button>
+          <button
+            class="example-btn neutral"
+            onclick="setExample('This is a neutral statement about technology.')"
+          >
+            <i class="fas fa-info-circle"></i> Neutral
+          </button>
+        </div>
+      </div>
+
+      <!-- Loading Animation -->
+      <div id="loading" class="loading" style="display: none">
+        <div class="spinner"></div>
+        <p>🔍 Analyzing text with AI models...</p>
+      </div>
+
+      <!-- Error Message -->
+      <div id="errorMessage" class="error-message" style="display: none"></div>
+
+      <!-- Results Section -->
+      <div id="results" class="results" style="display: none">
+        <!-- Status Banner -->
+        <div id="statusBanner" class="status-banner"></div>
+
+        <!-- Text Comparison - Side by Side Layout -->
+        <div class="text-comparison">
+          <!-- Original Text Box -->
+          <div class="text-box original-text-box">
+            <h3>
+              <i class="fas fa-exclamation-triangle"></i>
+              Original Text
+            </h3>
+            <p id="displayOriginalText"></p>
+          </div>
+
+          <!-- Animated Arrow -->
+          <div class="comparison-arrow">
+            <i class="fas fa-arrow-right"></i>
+            <span>AI POWERED</span>
+          </div>
+
+          <!-- Professional Rewrite Box -->
+          <div class="text-box rewrite-box">
+            <h3>
+              <i class="fas fa-magic"></i>
+              Professional Rewrite
+            </h3>
+            <p id="displayRewriteText"></p>
+            <button class="copy-suggestion-btn" onclick="copySuggestion()">
+              <i class="fas fa-copy"></i>
+              Copy Suggestion
+            </button>
+          </div>
+        </div>
+
+        <!-- Toxicity Scores -->
+        <div class="scores-section glass-effect">
+          <div class="section-header">
+            <i class="fas fa-chart-bar"></i>
+            <h2>Toxicity Analysis</h2>
+          </div>
+          <div id="scoresContainer"></div>
+        </div>
+
+        <!-- Flagged Categories -->
+        <div
+          id="flaggedSection"
+          class="flagged-section"
+          style="display: none"
+        ></div>
+
+        <!-- Download Button -->
+        <div class="actions">
+          <button class="action-btn" onclick="downloadReport()">
+            <i class="fas fa-download"></i> Download Report
+          </button>
+          <button class="action-btn secondary" onclick="copyResults()">
+            <i class="fas fa-copy"></i> Copy Results
+          </button>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <p>
+          Powered by BERT, RoBERTa & Detoxify | Built with
+          <i class="fas fa-heart"></i> for Content Safety
+        </p>
+      </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+  </body>
+</html>
