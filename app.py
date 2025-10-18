@@ -1,6 +1,6 @@
 """
 Toxicity Detection & Sentiment Analysis System with AI Rewriting
-Complete Flask Application with Groq + Rule-Based Hybrid Rewriter
+Complete Flask Application with Groq + Rule-Based Hybrid Rewriter + File Upload
 """
 
 from flask import Flask, render_template, request, jsonify
@@ -8,6 +8,9 @@ from flask_cors import CORS
 from detoxify import Detoxify
 from textblob import TextBlob
 from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
+import PyPDF2
+import io
 import os
 import logging
 import re
@@ -31,8 +34,23 @@ app = Flask(__name__)
 CORS(app)
 
 # Configuration
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024  # 16 KB max request size
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * \
+    1024  # 16 MB max (increased for file uploads)
 app.config['JSON_SORT_KEYS'] = False
+
+# File upload configuration
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'txt', 'pdf'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Create uploads folder
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 # Global model variables
 model = None
@@ -234,7 +252,7 @@ def analyze():
         sentiment_improvement = sentiment_cleaned['polarity'] - \
             sentiment_original['polarity']
 
-        # FIXED LOGIC: Only show improvement if cleaned sentiment is Positive or Neutral
+        # Only show improvement if cleaned sentiment is Positive or Neutral
         sentiment_improved = (
             sentiment_improvement > 0.1 and
             sentiment_cleaned['label'] in ['Positive', 'Neutral']
@@ -324,6 +342,86 @@ def rewrite_text():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    """File upload endpoint for batch analysis"""
+    try:
+        # Check if model is loaded
+        if model is None:
+            return jsonify({'error': 'Model not loaded. Please restart the server.'}), 503
+
+        # Check if file is present
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+
+        file = request.files['file']
+
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'Only .txt and .pdf files allowed'}), 400
+
+        filename = secure_filename(file.filename)
+        file_ext = filename.rsplit('.', 1)[1].lower()
+
+        # Extract text based on file type
+        text_content = ""
+
+        if file_ext == 'txt':
+            text_content = file.read().decode('utf-8')
+
+        elif file_ext == 'pdf':
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
+            for page in pdf_reader.pages:
+                text_content += page.extract_text() + "\n"
+
+        # Split into lines and filter empty ones
+        lines = [line.strip()
+                 for line in text_content.split('\n') if line.strip()]
+
+        if not lines:
+            return jsonify({'error': 'No text found in file'}), 400
+
+        # Analyze each line
+        results = []
+        for idx, line in enumerate(lines, 1):
+            if len(line) < 3:  # Skip very short lines
+                continue
+
+            # Use existing model to analyze
+            analysis = model.predict(line)
+            toxicity_score = float(analysis['toxicity'])
+            is_toxic = toxicity_score > 0.7
+
+            results.append({
+                'line_number': idx,
+                'text': line[:100] + '...' if len(line) > 100 else line,
+                'full_text': line,
+                'toxicity_score': round(toxicity_score, 3),
+                'is_toxic': is_toxic,
+                'categories': {k: round(float(v), 3) for k, v in analysis.items()}
+            })
+
+        logger.info(
+            f"File upload analysis complete: {len(results)} lines analyzed")
+
+        return jsonify({
+            'success': True,
+            'filename': filename,
+            'total_lines': len(lines),
+            'analyzed_lines': len(results),
+            'toxic_count': sum(1 for r in results if r['is_toxic']),
+            'safe_count': sum(1 for r in results if not r['is_toxic']),
+            'results': results,
+            'timestamp': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"File upload error: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     """Get system statistics"""
@@ -339,6 +437,8 @@ def get_stats():
             'sexual_explicit'
         ],
         'max_text_length': 5000,
+        'max_file_size': '16 MB',
+        'supported_file_types': list(ALLOWED_EXTENSIONS),
         'sentiment_labels': ['Positive', 'Negative', 'Neutral'],
         'rewriter_available': rewriter is not None,
         'groq_available': rewriter.groq.is_available if rewriter else False
@@ -349,6 +449,12 @@ def get_stats():
 def not_found(e):
     """Handle 404 errors"""
     return jsonify({'error': 'Endpoint not found'}), 404
+
+
+@app.errorhandler(413)
+def request_entity_too_large(e):
+    """Handle file too large errors"""
+    return jsonify({'error': 'File too large. Maximum size is 16 MB'}), 413
 
 
 @app.errorhandler(500)
@@ -375,6 +481,7 @@ if __name__ == '__main__':
         print("🌐 Access: http://localhost:5000")
         print("📊 Health check: http://localhost:5000/api/health")
         print("📈 Stats: http://localhost:5000/api/stats")
+        print("📁 File Upload: Supports .txt and .pdf (max 16 MB)")
 
         if rewriter_loaded:
             groq_status = "✅ Ready" if (
@@ -395,4 +502,4 @@ if __name__ == '__main__':
     else:
         print("\n❌ Failed to start server - Model loading failed")
         print("Please check if detoxify is installed correctly")
-        print("Run: pip install detoxify transformers torch textblob flask flask-cors python-dotenv groq")
+        print("Run: pip install detoxify transformers torch textblob flask flask-cors python-dotenv groq PyPDF2")

@@ -328,3 +328,100 @@ document.addEventListener("keydown", (e) => {
     analyzeText();
   }
 });
+
+// File Upload Handling
+const fileInput = document.getElementById("fileInput");
+const uploadBtn = document.getElementById("uploadBtn");
+const fileName = document.getElementById("fileName");
+
+fileInput.addEventListener("change", (e) => {
+  if (e.target.files.length > 0) {
+    fileName.textContent = e.target.files[0].name;
+    uploadBtn.disabled = false;
+  } else {
+    fileName.textContent = "No file chosen";
+    uploadBtn.disabled = true;
+  }
+});
+
+async function uploadFile() {
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  document.getElementById("uploadProgress").style.display = "block";
+  document.getElementById("fileResults").style.display = "none";
+  uploadBtn.disabled = true;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      displayFileResults(data);
+    } else {
+      showError(data.error || "Upload failed");
+    }
+  } catch (error) {
+    showError("Error uploading file: " + error.message);
+  } finally {
+    document.getElementById("uploadProgress").style.display = "none";
+    uploadBtn.disabled = false;
+  }
+}
+
+function displayFileResults(data) {
+  const resultsDiv = document.getElementById("fileResults");
+  const statsDiv = document.getElementById("fileStats");
+  const tableDiv = document.getElementById("resultsTable");
+
+  const toxicPercent = ((data.toxic_count / data.analyzed_lines) * 100).toFixed(
+    1
+  );
+  statsDiv.innerHTML = `
+        <div class="stat-card">
+            <strong>File:</strong> ${data.filename}<br>
+            <strong>Total Lines:</strong> ${data.analyzed_lines}<br>
+            <strong>Toxic:</strong> ${data.toxic_count} (${toxicPercent}%)<br>
+            <strong>Safe:</strong> ${data.analyzed_lines - data.toxic_count}
+        </div>
+    `;
+
+  let tableHTML = `
+        <table class="results-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Text Preview</th>
+                    <th>Score</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+  data.results.forEach((result) => {
+    const statusClass = result.is_toxic ? "status-toxic" : "status-safe";
+    const statusText = result.is_toxic ? "⚠️ Toxic" : "✅ Safe";
+
+    tableHTML += `
+            <tr>
+                <td>${result.line_number}</td>
+                <td class="text-preview">${result.text}</td>
+                <td>${result.toxicity_score}</td>
+                <td class="${statusClass}">${statusText}</td>
+            </tr>
+        `;
+  });
+
+  tableHTML += "</tbody></table>";
+  tableDiv.innerHTML = tableHTML;
+
+  resultsDiv.style.display = "block";
+}

@@ -81,6 +81,170 @@
         </div>
       </div>
 
+      <!-- PREMIUM FILE UPLOAD SECTION -->
+      <section class="upload-section-premium">
+        <div class="section-header">
+          <div class="icon-wrapper">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+          </div>
+          <div class="header-text">
+            <h2>📁 Batch File Analysis</h2>
+            <p>
+              Upload .txt or .pdf files to analyze multiple texts simultaneously
+            </p>
+          </div>
+        </div>
+
+        <!-- Drag & Drop Zone -->
+        <div class="upload-dropzone" id="dropzone">
+          <input
+            type="file"
+            id="fileInput"
+            accept=".txt,.pdf"
+            style="display: none"
+          />
+
+          <div class="dropzone-content">
+            <div class="upload-icon">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="64"
+                height="64"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 9l5-5 5 5M12 4v12"
+                ></path>
+              </svg>
+            </div>
+            <h3>Drop your file here</h3>
+            <p>or click to browse</p>
+            <div class="file-types">
+              <span class="badge badge-txt">.TXT</span>
+              <span class="badge badge-pdf">.PDF</span>
+            </div>
+            <small>Maximum file size: 16 MB</small>
+          </div>
+
+          <div class="file-selected" id="fileSelected" style="display: none">
+            <div class="file-info">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"
+                ></path>
+                <polyline points="13 2 13 9 20 9"></polyline>
+              </svg>
+              <div class="file-details">
+                <strong id="selectedFileName">file.txt</strong>
+                <span id="selectedFileSize">0 KB</span>
+              </div>
+            </div>
+            <button class="btn-remove" onclick="removeFile()">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Action Button -->
+        <div class="upload-actions">
+          <button
+            onclick="uploadFile()"
+            id="uploadBtn"
+            class="btn-analyze"
+            disabled
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="9 11 12 14 22 4"></polyline>
+              <path
+                d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"
+              ></path>
+            </svg>
+            Analyze File
+          </button>
+        </div>
+
+        <!-- Progress Indicator -->
+        <div id="uploadProgress" class="upload-progress" style="display: none">
+          <div class="progress-wrapper">
+            <div class="spinner"></div>
+            <p>Analyzing your file...</p>
+          </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="fileResults" class="results-container" style="display: none">
+          <div class="results-header">
+            <h3>📊 Analysis Results</h3>
+            <button class="btn-export" onclick="exportResults()">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Export CSV
+            </button>
+          </div>
+
+          <!-- Stats Cards -->
+          <div id="fileStats" class="stats-grid"></div>
+
+          <!-- Results Table -->
+          <div class="table-wrapper">
+            <div id="resultsTable"></div>
+          </div>
+        </div>
+      </section>
+
       <!-- Loading Animation -->
       <div id="loading" class="loading" style="display: none">
         <div class="spinner"></div>
