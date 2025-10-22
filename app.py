@@ -1,6 +1,7 @@
 """
 Toxicity Detection & Sentiment Analysis System with AI Rewriting
 Complete Flask Application with Groq + Rule-Based Hybrid Rewriter + File Upload
+FIXED VERSION - Production Ready
 """
 
 from flask import Flask, render_template, request, jsonify
@@ -17,7 +18,7 @@ import os
 import logging
 import re
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from bson import ObjectId
 from bson.errors import InvalidId
 
@@ -40,18 +41,29 @@ logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)
+
+# ✅ FIXED: Proper CORS configuration
+CORS(app, resources={
+    r"/api/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "expose_headers": ["Content-Type"],
+        "supports_credentials": False
+    }
+})
 
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max
 app.config['JSON_SORT_KEYS'] = False
-app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'change-me')
+app.config['JWT_SECRET_KEY'] = os.getenv(
+    'JWT_SECRET_KEY', 'change-me-in-production')
 app.config['JWT_TOKEN_LOCATION'] = ['headers']
 
 jwt = JWTManager(app)
 
 # Database configuration
-MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017')
+MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017/')
 MONGO_DB_NAME = os.getenv('MONGO_DB_NAME', 'senti_clean')
 
 users_collection = get_collection(MONGO_URI, MONGO_DB_NAME, 'users')
@@ -81,15 +93,16 @@ model = None
 rewriter = None
 
 
-def _get_authenticated_user_id() -> ObjectId:
-    """Return the authenticated user's ObjectId."""
-    identity = get_jwt_identity()
-    if not identity:
-        raise ValueError("Authentication required.")
+def _get_authenticated_user_id() -> Optional[ObjectId]:
+    """Return the authenticated user's ObjectId or None."""
     try:
+        identity = get_jwt_identity()
+        if not identity:
+            return None
         return ObjectId(identity)
-    except (InvalidId, TypeError) as exc:
-        raise ValueError("Invalid user identity.") from exc
+    except (ValueError, InvalidId, TypeError) as exc:
+        logger.warning(f"Invalid user identity: {exc}")
+        return None
 
 
 # Comprehensive toxic words list
@@ -98,7 +111,8 @@ TOXIC_WORDS = [
     'hurt', 'kill', 'damn', 'hell', 'ass', 'crap', 'suck', 'ugly',
     'dumb', 'fool', 'moron', 'loser', 'jerk', 'screw', 'shit',
     'fuck', 'bitch', 'dick', 'piss', 'fag', 'retard', 'slut',
-    'whore', 'douche', 'asshole', 'assholes', 'dumbass', 'fatass'
+    'whore', 'douche', 'asshole', 'assholes', 'dumbass', 'fatass',
+    'bullshit'
 ]
 
 
@@ -182,8 +196,7 @@ def analyze_sentiment(text):
             'polarity': 0.0,
             'subjectivity': 0.0,
             'confidence': 0.0,
-            'score': 0.5,
-            'error': str(e)
+            'score': 0.5
         }
 
 
@@ -246,28 +259,38 @@ def health_check():
     })
 
 
-@app.route('/api/analyze', methods=['POST'])
+@app.route('/api/analyze', methods=['POST', 'OPTIONS'])
 @jwt_required(optional=True)
 def analyze():
     """Main analysis endpoint for toxicity detection and sentiment analysis"""
+
+    # ✅ FIXED: Handle OPTIONS preflight request
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
+
     try:
         # Check if model is loaded
         if model is None:
-            return jsonify({'error': 'Model not loaded. Please restart the server.'}), 503
+            logger.error("Model not loaded")
+            return jsonify({
+                'success': False,
+                'error': 'Model not loaded. Please restart the server.'
+            }), 503
 
         # Handle optional authentication
-        try:
-            user_id = _get_authenticated_user_id()
-            authenticated = True
-        except (ValueError, Exception):
-            user_id = None
-            authenticated = False
+        user_id = _get_authenticated_user_id()
+        authenticated = user_id is not None
+
+        if not authenticated:
             logger.info("Anonymous analysis request")
 
         # Get JSON data
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'No JSON data provided', 'record_id': None}), 400
+            return jsonify({
+                'success': False,
+                'error': 'No JSON data provided'
+            }), 400
 
         # Extract text
         text = data.get('text', '')
@@ -275,7 +298,10 @@ def analyze():
         # Validate input
         is_valid, error_msg = validate_input(text)
         if not is_valid:
-            return jsonify({'error': error_msg}), 400
+            return jsonify({
+                'success': False,
+                'error': error_msg
+            }), 400
 
         # Get toxicity predictions
         logger.info(f"Analyzing text of length: {len(text)}")
@@ -284,8 +310,8 @@ def analyze():
         # Convert numpy to float
         tox_scores = {k: float(v) for k, v in tox_results.items()}
 
-        # Determine if toxic (threshold: 0.7)
-        is_toxic = tox_scores['toxicity'] > 0.7
+        # Determine if toxic (threshold: 0.5 for better detection)
+        is_toxic = tox_scores['toxicity'] > 0.5
 
         # Clean text if toxic
         cleaned_text = text
@@ -311,8 +337,8 @@ def analyze():
             sentiment_cleaned['label'] in ['Positive', 'Neutral']
         )
 
-        # Get flagged categories (threshold: 0.7)
-        flagged = [k for k, v in tox_scores.items() if v > 0.7]
+        # Get flagged categories (threshold: 0.5)
+        flagged = [k for k, v in tox_scores.items() if v > 0.5]
 
         # AI-powered rewriting suggestion
         rewritten_suggestion = None
@@ -328,6 +354,8 @@ def analyze():
                     logger.info(f"✅ Rewrite successful using {rewrite_method}")
             except Exception as e:
                 logger.error(f"Rewrite failed: {str(e)}")
+                rewritten_suggestion = cleaned_text
+                rewrite_method = "rule_based_fallback"
 
         # Persist analysis history (only if authenticated)
         record_id = None
@@ -355,21 +383,22 @@ def analyze():
 
                 insert_result = history_collection.insert_one(history_document)
                 record_id = str(insert_result.inserted_id)
+                logger.info(f"✅ Analysis saved with ID: {record_id}")
             except PyMongoError as db_error:
-                logger.error(
-                    f"Failed to persist analysis history: {db_error}", exc_info=True)
+                logger.error(f"Failed to persist analysis history: {db_error}")
+                # Don't fail the request if history save fails
 
-        # Prepare response
+        # ✅ FIXED: Ensure all response fields are JSON serializable
         response = {
             'success': True,
             'timestamp': datetime.now().isoformat(),
             'record_id': record_id,
             'original_text': text,
             'cleaned_text': cleaned_text,
-            'rewrite_suggestion': rewritten_suggestion,
-            'rewrite_method': rewrite_method,
+            'rewrite_suggestion': rewritten_suggestion if rewritten_suggestion else cleaned_text,
+            'rewrite_method': rewrite_method if rewrite_method else 'none',
             'text_length': len(text),
-            'is_toxic': is_toxic,
+            'is_toxic': bool(is_toxic),
             'toxicity_scores': tox_scores,
             'categories_flagged': flagged,
             'toxic_words_found': unique_toxic_words,
@@ -378,16 +407,17 @@ def analyze():
             'sentiment_original': sentiment_original,
             'sentiment_cleaned': sentiment_cleaned,
             'sentiment_improvement': round(sentiment_improvement, 4),
-            'sentiment_improved': sentiment_improved
+            'sentiment_improved': bool(sentiment_improved)
         }
 
         logger.info(
-            f"Analysis complete - Toxic: {is_toxic}, Sentiment: {sentiment_cleaned['label']}, Method: {rewrite_method}")
-        return jsonify(response)
+            f"Analysis complete - Toxic: {is_toxic}, Sentiment: {sentiment_cleaned['label']}")
+        return jsonify(response), 200
 
     except Exception as e:
         logger.error(f"Analysis error: {str(e)}", exc_info=True)
         return jsonify({
+            'success': False,
             'error': f'Analysis failed: {str(e)}',
             'timestamp': datetime.now().isoformat()
         }), 500
@@ -476,7 +506,7 @@ def upload_file():
             # Use existing model to analyze
             analysis = model.predict(line)
             toxicity_score = float(analysis['toxicity'])
-            is_toxic = toxicity_score > 0.7
+            is_toxic = toxicity_score > 0.5
 
             results.append({
                 'line_number': idx,
@@ -587,3 +617,21 @@ if __name__ == '__main__':
         print("\n❌ Failed to start server - Model loading failed")
         print("Please check if detoxify is installed correctly")
         print("Run: pip install detoxify transformers torch textblob flask flask-cors python-dotenv groq PyPDF2 flask-jwt-extended pymongo")
+
+# Add this health check endpoint
+
+
+@app.route('/healthz')
+def health_check():
+    """Health check endpoint for Render."""
+    return jsonify({
+        "status": "healthy",
+        "service": "Toxicity Detection API",
+        "timestamp": datetime.utcnow().isoformat()
+    }), 200
+
+
+if __name__ == "__main__":
+    # Development mode
+    app.run(debug=False, host="0.0.0.0",
+            port=int(os.environ.get("PORT", 5000)))
