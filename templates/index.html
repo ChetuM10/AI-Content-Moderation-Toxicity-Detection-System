@@ -21,6 +21,49 @@
       <div class="circle circle-3"></div>
     </div>
 
+    <!-- ====================================== -->
+    <!-- AUTHENTICATION NAVIGATION BAR - NEW! -->
+    <!-- ====================================== -->
+    <nav class="auth-navbar glass-effect">
+      <div class="nav-brand">
+        <i class="fas fa-shield-alt"></i>
+        <span>Senti-Clean</span>
+      </div>
+
+      <!-- User Menu (Shown when NOT logged in) -->
+      <div class="nav-menu" id="guestMenu">
+        <button class="nav-btn nav-btn-login" onclick="openLoginModal()">
+          <i class="fas fa-sign-in-alt"></i>
+          <span>Login</span>
+        </button>
+        <button class="nav-btn nav-btn-register" onclick="openRegisterModal()">
+          <i class="fas fa-user-plus"></i>
+          <span>Register</span>
+        </button>
+      </div>
+
+      <!-- User Dashboard (Shown when logged in) -->
+      <div class="nav-menu" id="userMenu" style="display: none">
+        <div class="user-profile">
+          <div class="user-avatar">
+            <i class="fas fa-user"></i>
+          </div>
+          <div class="user-info">
+            <span class="user-name" id="userName">User</span>
+            <span class="user-status">Premium</span>
+          </div>
+        </div>
+        <button class="nav-btn nav-btn-history" onclick="toggleHistory()">
+          <i class="fas fa-history"></i>
+          <span>History</span>
+        </button>
+        <button class="nav-btn nav-btn-logout" onclick="logout()">
+          <i class="fas fa-sign-out-alt"></i>
+          <span>Logout</span>
+        </button>
+      </div>
+    </nav>
+
     <div class="container">
       <!-- Header Section -->
       <header class="header">
@@ -39,11 +82,53 @@
         </div>
       </header>
 
+      <!-- ====================================== -->
+      <!-- ANALYSIS HISTORY PANEL - NEW! -->
+      <!-- ====================================== -->
+      <div
+        class="history-panel glass-effect"
+        id="historyPanel"
+      >
+        <div class="history-header">
+          <h2><i class="fas fa-history"></i> Analysis History</h2>
+          <button class="close-history-btn" onclick="toggleHistory()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <div class="history-filters">
+          <button class="filter-btn active" onclick="filterHistory('all')">
+            <i class="fas fa-list"></i> All
+          </button>
+          <button class="filter-btn" onclick="filterHistory('toxic')">
+            <i class="fas fa-exclamation-triangle"></i> Toxic
+          </button>
+          <button class="filter-btn" onclick="filterHistory('safe')">
+            <i class="fas fa-check-circle"></i> Safe
+          </button>
+          <button class="filter-btn" onclick="filterHistory('favorites')">
+            <i class="fas fa-star"></i> Favorites
+          </button>
+        </div>
+
+        <div class="history-content" id="historyContent">
+          <div class="history-loading">
+            <div class="spinner"></div>
+            <p>Loading history...</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Input Section -->
       <div class="input-section glass-effect">
         <div class="input-header">
           <i class="fas fa-keyboard"></i>
           <h2>Enter Text to Analyze</h2>
+          <!-- Login Reminder for Anonymous Users -->
+          <div class="login-reminder" id="loginReminder" style="display: none">
+            <i class="fas fa-info-circle"></i>
+            <span>Login to save your analysis history</span>
+          </div>
         </div>
         <textarea
           id="textInput"
@@ -290,6 +375,13 @@
           </div>
         </div>
 
+        <!-- Sentiment Analysis Section - NEW! -->
+        <div
+          id="sentimentSection"
+          class="sentiment-section glass-effect"
+          style="display: none"
+        ></div>
+
         <!-- Toxicity Scores -->
         <div class="scores-section glass-effect">
           <div class="section-header">
@@ -306,6 +398,13 @@
           style="display: none"
         ></div>
 
+        <!-- Toxic Words Section - NEW! -->
+        <div
+          id="toxicWordsSection"
+          class="toxic-words-section glass-effect"
+          style="display: none"
+        ></div>
+
         <!-- Download Button -->
         <div class="actions">
           <button class="action-btn" onclick="downloadReport()">
@@ -313,6 +412,15 @@
           </button>
           <button class="action-btn secondary" onclick="copyResults()">
             <i class="fas fa-copy"></i> Copy Results
+          </button>
+          <!-- Favorite Button (Only for logged-in users) -->
+          <button
+            class="action-btn favorite-btn"
+            id="favoriteBtn"
+            onclick="toggleFavorite()"
+            style="display: none"
+          >
+            <i class="fas fa-star"></i> Add to Favorites
           </button>
         </div>
       </div>
@@ -324,6 +432,126 @@
           <i class="fas fa-heart"></i> for Content Safety
         </p>
       </footer>
+    </div>
+
+    <!-- ====================================== -->
+    <!-- LOGIN MODAL - NEW! -->
+    <!-- ====================================== -->
+    <div class="auth-modal" id="loginModal" style="display: none">
+      <div class="modal-overlay" onclick="closeLoginModal()"></div>
+      <div class="modal-content glass-effect">
+        <div class="modal-header">
+          <h2><i class="fas fa-sign-in-alt"></i> Login to Your Account</h2>
+          <button class="modal-close" onclick="closeLoginModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <form id="loginForm" onsubmit="handleLogin(event)">
+          <div class="form-group">
+            <label for="loginEmail">
+              <i class="fas fa-envelope"></i> Email Address
+            </label>
+            <input
+              type="email"
+              id="loginEmail"
+              placeholder="Enter your email"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="loginPassword">
+              <i class="fas fa-lock"></i> Password
+            </label>
+            <input
+              type="password"
+              id="loginPassword"
+              placeholder="Enter your password"
+              required
+            />
+          </div>
+
+          <button type="submit" class="btn-submit">
+            <i class="fas fa-sign-in-alt"></i>
+            <span>Login</span>
+          </button>
+        </form>
+
+        <div class="modal-footer">
+          <p>
+            Don't have an account?
+            <a href="#" onclick="switchToRegister()">Register here</a>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================================== -->
+    <!-- REGISTER MODAL - NEW! -->
+    <!-- ====================================== -->
+    <div class="auth-modal" id="registerModal" style="display: none">
+      <div class="modal-overlay" onclick="closeRegisterModal()"></div>
+      <div class="modal-content glass-effect">
+        <div class="modal-header">
+          <h2><i class="fas fa-user-plus"></i> Create New Account</h2>
+          <button class="modal-close" onclick="closeRegisterModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <form id="registerForm" onsubmit="handleRegister(event)">
+          <div class="form-group">
+            <label for="registerEmail">
+              <i class="fas fa-envelope"></i> Email Address
+            </label>
+            <input
+              type="email"
+              id="registerEmail"
+              placeholder="Enter your email"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="registerPassword">
+              <i class="fas fa-lock"></i> Password
+            </label>
+            <input
+              type="password"
+              id="registerPassword"
+              placeholder="Minimum 8 characters"
+              minlength="8"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="registerPasswordConfirm">
+              <i class="fas fa-lock"></i> Confirm Password
+            </label>
+            <input
+              type="password"
+              id="registerPasswordConfirm"
+              placeholder="Re-enter your password"
+              minlength="8"
+              required
+            />
+          </div>
+
+          <button type="submit" class="btn-submit">
+            <i class="fas fa-user-plus"></i>
+            <span>Create Account</span>
+          </button>
+        </form>
+
+        <div class="modal-footer">
+          <p>
+            Already have an account?
+            <a href="#" onclick="switchToLogin()">Login here</a>
+          </p>
+        </div>
+      </div>
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>

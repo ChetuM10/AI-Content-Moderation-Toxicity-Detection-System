@@ -5,6 +5,8 @@ Complete Flask Application with Groq + Rule-Based Hybrid Rewriter + File Upload
 
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager, get_jwt_identity, jwt_required
+from pymongo.errors import PyMongoError
 from detoxify import Detoxify
 from textblob import TextBlob
 from dotenv import load_dotenv
@@ -15,9 +17,16 @@ import os
 import logging
 import re
 from datetime import datetime
+from typing import Any, Dict, List
+from bson import ObjectId
+from bson.errors import InvalidId
 
 # Import our hybrid rewriter
 from rewriter import HybridRewriter
+from src.auth.routes import create_auth_blueprint
+from src.db.client import get_collection
+from src.db.models import AnalysisRecord
+from src.history.routes import create_history_blueprint
 
 # Load environment variables
 load_dotenv()
@@ -34,9 +43,24 @@ app = Flask(__name__)
 CORS(app)
 
 # Configuration
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * \
-    1024  # 16 MB max (increased for file uploads)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max
 app.config['JSON_SORT_KEYS'] = False
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'change-me')
+app.config['JWT_TOKEN_LOCATION'] = ['headers']
+
+jwt = JWTManager(app)
+
+# Database configuration
+MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017')
+MONGO_DB_NAME = os.getenv('MONGO_DB_NAME', 'senti_clean')
+
+users_collection = get_collection(MONGO_URI, MONGO_DB_NAME, 'users')
+history_collection = get_collection(
+    MONGO_URI, MONGO_DB_NAME, 'analysis_history')
+
+# Register blueprints
+app.register_blueprint(create_auth_blueprint(users_collection))
+app.register_blueprint(create_history_blueprint(history_collection))
 
 # File upload configuration
 UPLOAD_FOLDER = 'uploads'
@@ -55,6 +79,18 @@ def allowed_file(filename):
 # Global model variables
 model = None
 rewriter = None
+
+
+def _get_authenticated_user_id() -> ObjectId:
+    """Return the authenticated user's ObjectId."""
+    identity = get_jwt_identity()
+    if not identity:
+        raise ValueError("Authentication required.")
+    try:
+        return ObjectId(identity)
+    except (InvalidId, TypeError) as exc:
+        raise ValueError("Invalid user identity.") from exc
+
 
 # Comprehensive toxic words list
 TOXIC_WORDS = [
@@ -96,6 +132,11 @@ def load_rewriter():
     except Exception as e:
         logger.error(f"❌ Failed to load rewriter: {str(e)}")
         return False
+
+
+# Ensure core components are loaded even when running via `flask run`
+detoxify_loaded = load_model()
+rewriter_loaded = load_rewriter()
 
 
 def analyze_sentiment(text):
@@ -206,6 +247,7 @@ def health_check():
 
 
 @app.route('/api/analyze', methods=['POST'])
+@jwt_required(optional=True)
 def analyze():
     """Main analysis endpoint for toxicity detection and sentiment analysis"""
     try:
@@ -213,10 +255,19 @@ def analyze():
         if model is None:
             return jsonify({'error': 'Model not loaded. Please restart the server.'}), 503
 
+        # Handle optional authentication
+        try:
+            user_id = _get_authenticated_user_id()
+            authenticated = True
+        except (ValueError, Exception):
+            user_id = None
+            authenticated = False
+            logger.info("Anonymous analysis request")
+
         # Get JSON data
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'No JSON data provided'}), 400
+            return jsonify({'error': 'No JSON data provided', 'record_id': None}), 400
 
         # Extract text
         text = data.get('text', '')
@@ -238,11 +289,13 @@ def analyze():
 
         # Clean text if toxic
         cleaned_text = text
-        toxic_words_found = []
+        toxic_words_found: List[str] = []
 
         if is_toxic:
             cleaned_text, toxic_words_found = clean_toxic_text(
                 text, TOXIC_WORDS)
+
+        unique_toxic_words = sorted(set(toxic_words_found))
 
         # Analyze sentiment on BOTH original and cleaned text
         sentiment_original = analyze_sentiment(text)
@@ -276,10 +329,41 @@ def analyze():
             except Exception as e:
                 logger.error(f"Rewrite failed: {str(e)}")
 
+        # Persist analysis history (only if authenticated)
+        record_id = None
+        if authenticated and user_id:
+            try:
+                history_document = AnalysisRecord(
+                    user_id=user_id,
+                    original_text=text,
+                    cleaned_text=cleaned_text,
+                    rewrite_suggestion=rewritten_suggestion,
+                    rewrite_method=rewrite_method,
+                    toxicity_scores=tox_scores,
+                    sentiment_original=sentiment_original,
+                    sentiment_cleaned=sentiment_cleaned,
+                    categories_flagged=flagged,
+                    toxic_words_found=unique_toxic_words,
+                    toxic_word_count=len(unique_toxic_words),
+                    overall_toxicity=round(tox_scores['toxicity'] * 100, 2),
+                    sentiment_improvement=round(sentiment_improvement, 4),
+                    sentiment_improved=sentiment_improved,
+                    is_toxic=is_toxic,
+                    source='text',
+                    metadata={},
+                ).to_document()
+
+                insert_result = history_collection.insert_one(history_document)
+                record_id = str(insert_result.inserted_id)
+            except PyMongoError as db_error:
+                logger.error(
+                    f"Failed to persist analysis history: {db_error}", exc_info=True)
+
         # Prepare response
         response = {
             'success': True,
             'timestamp': datetime.now().isoformat(),
+            'record_id': record_id,
             'original_text': text,
             'cleaned_text': cleaned_text,
             'rewrite_suggestion': rewritten_suggestion,
@@ -288,8 +372,8 @@ def analyze():
             'is_toxic': is_toxic,
             'toxicity_scores': tox_scores,
             'categories_flagged': flagged,
-            'toxic_words_found': list(set(toxic_words_found)),
-            'toxic_word_count': len(toxic_words_found),
+            'toxic_words_found': unique_toxic_words,
+            'toxic_word_count': len(unique_toxic_words),
             'overall_toxicity': round(tox_scores['toxicity'] * 100, 2),
             'sentiment_original': sentiment_original,
             'sentiment_cleaned': sentiment_cleaned,
@@ -502,4 +586,4 @@ if __name__ == '__main__':
     else:
         print("\n❌ Failed to start server - Model loading failed")
         print("Please check if detoxify is installed correctly")
-        print("Run: pip install detoxify transformers torch textblob flask flask-cors python-dotenv groq PyPDF2")
+        print("Run: pip install detoxify transformers torch textblob flask flask-cors python-dotenv groq PyPDF2 flask-jwt-extended pymongo")
