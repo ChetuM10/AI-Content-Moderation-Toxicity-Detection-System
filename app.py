@@ -1,7 +1,7 @@
 """
 Toxicity Detection & Sentiment Analysis System with AI Rewriting
 Complete Flask Application with Groq + Rule-Based Hybrid Rewriter + File Upload
-FIXED VERSION - Production Ready
+FIXED VERSION - Production Ready for Hugging Face Spaces
 """
 
 from flask import Flask, render_template, request, jsonify
@@ -157,11 +157,9 @@ def analyze_sentiment(text):
     """Analyze sentiment using TextBlob"""
     try:
         blob = TextBlob(text)
-        polarity = blob.sentiment.polarity  # -1 (negative) to 1 (positive)
-        # 0 (objective) to 1 (subjective)
+        polarity = blob.sentiment.polarity
         subjectivity = blob.sentiment.subjectivity
 
-        # Determine sentiment label and emoji
         if polarity > 0.1:
             label = "Positive"
             emoji = "😊"
@@ -175,7 +173,6 @@ def analyze_sentiment(text):
             emoji = "😐"
             color = "#6c757d"
 
-        # Calculate confidence as percentage
         confidence = abs(polarity) * 100
 
         return {
@@ -185,7 +182,7 @@ def analyze_sentiment(text):
             'polarity': round(polarity, 4),
             'subjectivity': round(subjectivity, 4),
             'confidence': round(confidence, 2),
-            'score': round((polarity + 1) / 2, 4)  # Normalize to 0-1
+            'score': round((polarity + 1) / 2, 4)
         }
     except Exception as e:
         logger.error(f"Sentiment analysis error: {str(e)}")
@@ -248,10 +245,12 @@ def home():
 
 
 @app.route('/api/health', methods=['GET'])
+@app.route('/healthz', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
+        'service': 'Toxicity Detection API',
         'detoxify_loaded': model is not None,
         'rewriter_loaded': rewriter is not None,
         'groq_available': rewriter.groq.is_available if rewriter else False,
@@ -264,12 +263,10 @@ def health_check():
 def analyze():
     """Main analysis endpoint for toxicity detection and sentiment analysis"""
 
-    # ✅ FIXED: Handle OPTIONS preflight request
     if request.method == 'OPTIONS':
         return jsonify({'status': 'ok'}), 200
 
     try:
-        # Check if model is loaded
         if model is None:
             logger.error("Model not loaded")
             return jsonify({
@@ -277,14 +274,12 @@ def analyze():
                 'error': 'Model not loaded. Please restart the server.'
             }), 503
 
-        # Handle optional authentication
         user_id = _get_authenticated_user_id()
         authenticated = user_id is not None
 
         if not authenticated:
             logger.info("Anonymous analysis request")
 
-        # Get JSON data
         data = request.get_json()
         if not data:
             return jsonify({
@@ -292,10 +287,8 @@ def analyze():
                 'error': 'No JSON data provided'
             }), 400
 
-        # Extract text
         text = data.get('text', '')
 
-        # Validate input
         is_valid, error_msg = validate_input(text)
         if not is_valid:
             return jsonify({
@@ -303,17 +296,13 @@ def analyze():
                 'error': error_msg
             }), 400
 
-        # Get toxicity predictions
         logger.info(f"Analyzing text of length: {len(text)}")
         tox_results = model.predict(text)
 
-        # Convert numpy to float
         tox_scores = {k: float(v) for k, v in tox_results.items()}
 
-        # Determine if toxic (threshold: 0.5 for better detection)
         is_toxic = tox_scores['toxicity'] > 0.5
 
-        # Clean text if toxic
         cleaned_text = text
         toxic_words_found: List[str] = []
 
@@ -323,24 +312,19 @@ def analyze():
 
         unique_toxic_words = sorted(set(toxic_words_found))
 
-        # Analyze sentiment on BOTH original and cleaned text
         sentiment_original = analyze_sentiment(text)
         sentiment_cleaned = analyze_sentiment(cleaned_text)
 
-        # Calculate sentiment improvement
         sentiment_improvement = sentiment_cleaned['polarity'] - \
             sentiment_original['polarity']
 
-        # Only show improvement if cleaned sentiment is Positive or Neutral
         sentiment_improved = (
             sentiment_improvement > 0.1 and
             sentiment_cleaned['label'] in ['Positive', 'Neutral']
         )
 
-        # Get flagged categories (threshold: 0.5)
         flagged = [k for k, v in tox_scores.items() if v > 0.5]
 
-        # AI-powered rewriting suggestion
         rewritten_suggestion = None
         rewrite_method = None
 
@@ -357,7 +341,6 @@ def analyze():
                 rewritten_suggestion = cleaned_text
                 rewrite_method = "rule_based_fallback"
 
-        # Persist analysis history (only if authenticated)
         record_id = None
         if authenticated and user_id:
             try:
@@ -386,9 +369,7 @@ def analyze():
                 logger.info(f"✅ Analysis saved with ID: {record_id}")
             except PyMongoError as db_error:
                 logger.error(f"Failed to persist analysis history: {db_error}")
-                # Don't fail the request if history save fails
 
-        # ✅ FIXED: Ensure all response fields are JSON serializable
         response = {
             'success': True,
             'timestamp': datetime.now().isoformat(),
@@ -433,12 +414,10 @@ def rewrite_text():
         data = request.get_json()
         text = data.get('text', '')
 
-        # Validate input
         is_valid, error_msg = validate_input(text)
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        # Rewrite text
         logger.info(f"Rewriting text: {text[:50]}...")
         result = rewriter.rewrite(text)
 
@@ -460,11 +439,9 @@ def rewrite_text():
 def upload_file():
     """File upload endpoint for batch analysis"""
     try:
-        # Check if model is loaded
         if model is None:
             return jsonify({'error': 'Model not loaded. Please restart the server.'}), 503
 
-        # Check if file is present
         if 'file' not in request.files:
             return jsonify({'error': 'No file uploaded'}), 400
 
@@ -479,7 +456,6 @@ def upload_file():
         filename = secure_filename(file.filename)
         file_ext = filename.rsplit('.', 1)[1].lower()
 
-        # Extract text based on file type
         text_content = ""
 
         if file_ext == 'txt':
@@ -490,20 +466,17 @@ def upload_file():
             for page in pdf_reader.pages:
                 text_content += page.extract_text() + "\n"
 
-        # Split into lines and filter empty ones
         lines = [line.strip()
                  for line in text_content.split('\n') if line.strip()]
 
         if not lines:
             return jsonify({'error': 'No text found in file'}), 400
 
-        # Analyze each line
         results = []
         for idx, line in enumerate(lines, 1):
-            if len(line) < 3:  # Skip very short lines
+            if len(line) < 3:
                 continue
 
-            # Use existing model to analyze
             analysis = model.predict(line)
             toxicity_score = float(analysis['toxicity'])
             is_toxic = toxicity_score > 0.5
@@ -578,23 +551,24 @@ def internal_error(e):
     return jsonify({'error': 'Internal server error'}), 500
 
 
-# Initialize models on startup
+# ✅ FIXED: Single entry point with proper port configuration
 if __name__ == '__main__':
     print("="*70)
     print("🛡️  TOXICITY DETECTION & AI REWRITING SYSTEM")
     print("="*70)
 
-    # Load Detoxify model
+    # Load models on startup
     detoxify_loaded = load_model()
-
-    # Load Rewriter (Groq + Rules)
     rewriter_loaded = load_rewriter()
 
     if detoxify_loaded:
+        # Get port from environment variable (Hugging Face sets PORT=7860)
+        port = int(os.environ.get('PORT', 7860))
+
         print("\n✅ Server ready!")
-        print("🌐 Access: http://localhost:5000")
-        print("📊 Health check: http://localhost:5000/api/health")
-        print("📈 Stats: http://localhost:5000/api/stats")
+        print(f"🌐 Access: http://localhost:{port}")
+        print(f"📊 Health check: http://localhost:{port}/api/health")
+        print(f"📈 Stats: http://localhost:{port}/api/stats")
         print("📁 File Upload: Supports .txt and .pdf (max 16 MB)")
 
         if rewriter_loaded:
@@ -606,32 +580,12 @@ if __name__ == '__main__':
 
         print("\n" + "="*70 + "\n")
 
-        # Run Flask app
+        # ✅ Run Flask app on port 7860 for Hugging Face
         app.run(
             host='0.0.0.0',
-            port=5000,
-            debug=True,
-            use_reloader=False  # Prevent model reloading
+            port=port,
+            debug=False  # Turn off debug mode for production
         )
     else:
         print("\n❌ Failed to start server - Model loading failed")
         print("Please check if detoxify is installed correctly")
-        print("Run: pip install detoxify transformers torch textblob flask flask-cors python-dotenv groq PyPDF2 flask-jwt-extended pymongo")
-
-# Add this health check endpoint
-
-
-@app.route('/healthz')
-def health_check():
-    """Health check endpoint for Render."""
-    return jsonify({
-        "status": "healthy",
-        "service": "Toxicity Detection API",
-        "timestamp": datetime.utcnow().isoformat()
-    }), 200
-
-
-if __name__ == "__main__":
-    # Development mode
-    app.run(debug=False, host="0.0.0.0",
-            port=int(os.environ.get("PORT", 7860)))
