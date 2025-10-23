@@ -1,0 +1,90 @@
+TDR - RESUME SCREENING/
+│
+├── .github/
+│   └── workflows/
+│       ├── ci-testing.yml
+│       ├── pyright.yml
+│       └── update_wheels.yml
+│
+├── .zencoder/
+│   └── rules/
+│       └── repo.md
+│
+├── configs/
+│   ├── Multilingual_toxic_comment_classification_XLMR.json
+│   ├── Multilingual_toxic_comment_classification_XLMR_stage2.json
+│   ├── Toxic_comment_classification_ALBERT.json
+│   ├── Toxic_comment_classification_BERT.json
+│   ├── Toxic_comment_classification_ModernBERT.json
+│   ├── Unintended_bias_toxic_comment_classification_Albert.json
+│   ├── Unintended_bias_toxic_comment_classification_RoBERTa.json
+│   └── Unintended_bias_toxic_comment_classification_RoBERTa_combined.json
+│
+├── detoxify/
+│   ├── __pycache__/
+│   ├── __init__.py
+│   └── detoxify.py
+│
+├── model_eval/
+│   ├── compute_bias_metric.py
+│   ├── compute_language_breakdown.py
+│   ├── evaluate.py
+│   └── utils.py
+│
+├── src/
+│   ├── __pycache__/
+│   ├── auth/
+│   │   ├── __pycache__/
+│   │   ├── __init__.py
+│   │   ├── passwords.py
+│   │   ├── routes.py
+│   │   ├── tokens.py
+│   │   └── validators.py
+│   │
+│   ├── db/
+│   │   ├── __pycache__/
+│   │   ├── __init__.py
+│   │   ├── client.py
+│   │   └── models.py
+│   │
+│   ├── history/
+│   │   ├── __pycache__/
+│   │   ├── __init__.py
+│   │   └── routes.py
+│   │
+│   ├── __init__.py
+│   ├── data_loaders.py
+│   └── utils.py
+│
+├── static/
+│   ├── script.js
+│   └── style.css
+│
+├── templates/
+│   └── index.html
+│
+├── tests/
+│   ├── dummy_data/
+│   ├── __init__.py
+│   ├── requirements.txt
+│   ├── test_models.py
+│   ├── test_torch_hub.py
+│   └── test_trainer.py
+│
+├── uploads/                    # Directory for uploaded files
+│
+├── .env                        # Environment variables (GROQ_API_KEY, MONGO_URI, etc.)
+├── .gitignore
+├── app.py                      # Main Flask application
+├── convert_weights.py          # PyTorch checkpoint converter
+├── hubconf.py                  # Torch Hub configuration
+├── LICENSE
+├── preprocessing_utils.py      # Data preprocessing utilities
+├── project_structure.txt       # Project structure documentation
+├── pyproject.toml             # Python project configuration
+├── README.md                   # Project documentation
+├── requirements.txt            # Python dependencies
+├── rewriter.py                 # Hybrid AI rewriter (Groq + Rule-based)
+├── run_prediction.py           # CLI prediction script
+├── test_debug.py              # Debug testing script
+└── train.py                    # PyTorch Lightning training script
