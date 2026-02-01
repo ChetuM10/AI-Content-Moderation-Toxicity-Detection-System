@@ -108,6 +108,8 @@ class RuleBasedRewriter:
             'shit': 'poor',
             'shitty': 'subpar',
             'sh*t': 'poor',
+            'bullshit': 'substandard',
+            'bs': 'substandard',
             'damn': 'darn',  # FIXED: was empty, now has value
             'damned': 'unfortunate',
             'hell': 'heck',

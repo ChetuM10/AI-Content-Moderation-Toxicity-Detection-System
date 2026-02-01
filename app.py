@@ -72,6 +72,31 @@ app.config['JWT_TOKEN_LOCATION'] = ['headers']
 
 jwt = JWTManager(app)
 
+# JWT Error Handlers - Handle invalid tokens gracefully
+@jwt.invalid_token_loader
+def invalid_token_callback(error_string):
+    """Handle invalid JWT tokens"""
+    return jsonify({
+        'success': False,
+        'error': 'Invalid token. Please login again.'
+    }), 401
+
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    """Handle expired JWT tokens"""
+    return jsonify({
+        'success': False,
+        'error': 'Token has expired. Please login again.'
+    }), 401
+
+@jwt.unauthorized_loader
+def unauthorized_callback(error_string):
+    """Handle missing JWT tokens"""
+    return jsonify({
+        'success': False,
+        'error': 'Authorization required.'
+    }), 401
+
 # Database configuration
 MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017/')
 MONGO_DB_NAME = os.getenv('MONGO_DB_NAME', 'senti_clean')
