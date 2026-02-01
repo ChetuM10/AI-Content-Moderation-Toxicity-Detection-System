@@ -1,33 +1,43 @@
 """
-Toxicity Detection & Sentiment Analysis System with AI Rewriting
-Complete Flask Application with Groq + Rule-Based Hybrid Rewriter + File Upload
-FIXED VERSION - Production Ready for Hugging Face Spaces
+Toxicity Detection & Sentiment Analysis System with AI Rewriting + Mental Health Crisis Detection
+Complete Flask Application with Groq + Rule-Based Hybrid Rewriter + Crisis Safety System
+PRODUCTION READY VERSION
 """
 
-from flask import Flask, render_template, request, jsonify
-from flask_cors import CORS
-from flask_jwt_extended import JWTManager, get_jwt_identity, jwt_required
-from pymongo.errors import PyMongoError
-from detoxify import Detoxify
-from textblob import TextBlob
-from dotenv import load_dotenv
-from werkzeug.utils import secure_filename
+from src.crisis.resources import CrisisResources
+from src.crisis.detector import CrisisDetector
+from rewriter import HybridRewriter
+from src.auth.routes import create_auth_blueprint
+from src.db.client import get_collection
+from src.db.models import AnalysisRecord
+from src.history.routes import create_history_blueprint
 import PyPDF2
 import io
-import os
 import logging
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from bson import ObjectId
 from bson.errors import InvalidId
+from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+from textblob import TextBlob
+from detoxify import Detoxify
+from pymongo.errors import PyMongoError
+from flask_jwt_extended import JWTManager, get_jwt_identity, jwt_required
+from flask_cors import CORS
+from flask import Flask, render_template, request, jsonify
+import sys
+import os
 
-# Import our hybrid rewriter
-from rewriter import HybridRewriter
-from src.auth.routes import create_auth_blueprint
-from src.db.client import get_collection
-from src.db.models import AnalysisRecord
-from src.history.routes import create_history_blueprint
+# ✅ CRITICAL: Add src to path BEFORE any imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
+# Now import everything else
+
+# Import project modules
+
+# Import crisis detection modules
 
 # Load environment variables
 load_dotenv()
@@ -91,6 +101,7 @@ def allowed_file(filename):
 # Global model variables
 model = None
 rewriter = None
+crisis_detector = None
 
 
 def _get_authenticated_user_id() -> Optional[ObjectId]:
@@ -148,9 +159,23 @@ def load_rewriter():
         return False
 
 
-# Ensure core components are loaded even when running via `flask run`
+def load_crisis_detector():
+    """Load Crisis Detection System"""
+    global crisis_detector
+    try:
+        logger.info("🔄 Initializing Crisis Detection System...")
+        crisis_detector = CrisisDetector()
+        logger.info("✅ Crisis Detection System initialized!")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Failed to load crisis detector: {str(e)}")
+        return False
+
+
+# Ensure core components are loaded
 detoxify_loaded = load_model()
 rewriter_loaded = load_rewriter()
+crisis_loaded = load_crisis_detector()
 
 
 def analyze_sentiment(text):
@@ -241,7 +266,7 @@ def home():
         return render_template('index.html')
     except Exception as e:
         logger.error(f"Error serving index.html: {str(e)}")
-        return jsonify({'error': 'Template not found. Please ensure index.html exists in templates/ folder'}), 500
+        return jsonify({'error': 'Template not found'}), 500
 
 
 @app.route('/api/health', methods=['GET'])
@@ -250,9 +275,10 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'service': 'Toxicity Detection API',
+        'service': 'Toxicity Detection + Mental Health Crisis System',
         'detoxify_loaded': model is not None,
         'rewriter_loaded': rewriter is not None,
+        'crisis_detector_loaded': crisis_detector is not None,
         'groq_available': rewriter.groq.is_available if rewriter else False,
         'timestamp': datetime.now().isoformat()
     })
@@ -261,7 +287,7 @@ def health_check():
 @app.route('/api/analyze', methods=['POST', 'OPTIONS'])
 @jwt_required(optional=True)
 def analyze():
-    """Main analysis endpoint for toxicity detection and sentiment analysis"""
+    """Main analysis endpoint for toxicity detection, sentiment analysis, and crisis detection"""
 
     if request.method == 'OPTIONS':
         return jsonify({'status': 'ok'}), 200
@@ -277,54 +303,66 @@ def analyze():
         user_id = _get_authenticated_user_id()
         authenticated = user_id is not None
 
-        if not authenticated:
-            logger.info("Anonymous analysis request")
-
         data = request.get_json()
         if not data:
-            return jsonify({
-                'success': False,
-                'error': 'No JSON data provided'
-            }), 400
+            return jsonify({'success': False, 'error': 'No JSON data provided'}), 400
 
         text = data.get('text', '')
 
         is_valid, error_msg = validate_input(text)
         if not is_valid:
-            return jsonify({
-                'success': False,
-                'error': error_msg
-            }), 400
+            return jsonify({'success': False, 'error': error_msg}), 400
 
         logger.info(f"Analyzing text of length: {len(text)}")
+
+        # Step 1: Detect toxicity
         tox_results = model.predict(text)
-
         tox_scores = {k: float(v) for k, v in tox_results.items()}
-
         is_toxic = tox_scores['toxicity'] > 0.5
 
+        # Step 2: Analyze sentiment
+        sentiment_original = analyze_sentiment(text)
+
+        # Step 3: ✅ NEW - Check for mental health crisis
+        crisis_risk = None
+        mental_health_warning = False
+        crisis_resources_data = None
+
+        if crisis_detector is not None:
+            try:
+                crisis_risk = crisis_detector.detect_risk(text)
+                mental_health_warning = crisis_risk['risk_level'] in [
+                    'IMMINENT', 'HIGH']
+
+                # Attach resources if crisis detected
+                if mental_health_warning:
+                    country = request.args.get('country', 'IN')
+                    crisis_resources_data = CrisisResources.get_resources(
+                        country)
+                    logger.warning(
+                        f"⚠️ MENTAL HEALTH CRISIS DETECTED: {crisis_risk['risk_level']}")
+
+            except Exception as e:
+                logger.error(f"Crisis detection error: {e}")
+                crisis_risk = {'risk_level': 'UNKNOWN', 'error': str(e)}
+
+        # Step 4: Clean toxic text
         cleaned_text = text
-        toxic_words_found: List[str] = []
+        toxic_words_found = []
 
         if is_toxic:
             cleaned_text, toxic_words_found = clean_toxic_text(
                 text, TOXIC_WORDS)
 
         unique_toxic_words = sorted(set(toxic_words_found))
-
-        sentiment_original = analyze_sentiment(text)
         sentiment_cleaned = analyze_sentiment(cleaned_text)
-
         sentiment_improvement = sentiment_cleaned['polarity'] - \
             sentiment_original['polarity']
-
-        sentiment_improved = (
-            sentiment_improvement > 0.1 and
-            sentiment_cleaned['label'] in ['Positive', 'Neutral']
-        )
-
+        sentiment_improved = (sentiment_improvement > 0.1 and sentiment_cleaned['label'] in [
+                              'Positive', 'Neutral'])
         flagged = [k for k, v in tox_scores.items() if v > 0.5]
 
+        # Step 5: AI Rewriting
         rewritten_suggestion = None
         rewrite_method = None
 
@@ -341,6 +379,7 @@ def analyze():
                 rewritten_suggestion = cleaned_text
                 rewrite_method = "rule_based_fallback"
 
+        # Step 6: Save to database
         record_id = None
         if authenticated and user_id:
             try:
@@ -361,15 +400,17 @@ def analyze():
                     sentiment_improved=sentiment_improved,
                     is_toxic=is_toxic,
                     source='text',
-                    metadata={},
+                    metadata={
+                        'crisis_risk': crisis_risk} if crisis_risk else {},
                 ).to_document()
 
                 insert_result = history_collection.insert_one(history_document)
                 record_id = str(insert_result.inserted_id)
                 logger.info(f"✅ Analysis saved with ID: {record_id}")
             except PyMongoError as db_error:
-                logger.error(f"Failed to persist analysis history: {db_error}")
+                logger.error(f"Failed to persist analysis: {db_error}")
 
+        # Step 7: Build response
         response = {
             'success': True,
             'timestamp': datetime.now().isoformat(),
@@ -388,11 +429,19 @@ def analyze():
             'sentiment_original': sentiment_original,
             'sentiment_cleaned': sentiment_cleaned,
             'sentiment_improvement': round(sentiment_improvement, 4),
-            'sentiment_improved': bool(sentiment_improved)
+            'sentiment_improved': bool(sentiment_improved),
+
+            # ✅ NEW: Crisis detection fields
+            'crisis_risk': crisis_risk,
+            'mental_health_warning': mental_health_warning,
         }
 
+        # Attach crisis resources if needed
+        if mental_health_warning and crisis_resources_data:
+            response['crisis_resources'] = crisis_resources_data
+
         logger.info(
-            f"Analysis complete - Toxic: {is_toxic}, Sentiment: {sentiment_cleaned['label']}")
+            f"Analysis complete - Toxic: {is_toxic}, Crisis: {crisis_risk['risk_level'] if crisis_risk else 'N/A'}")
         return jsonify(response), 200
 
     except Exception as e:
@@ -402,6 +451,49 @@ def analyze():
             'error': f'Analysis failed: {str(e)}',
             'timestamp': datetime.now().isoformat()
         }), 500
+
+# ========== CRISIS DETECTION ENDPOINTS ==========
+
+
+@app.route('/api/crisis/detect', methods=['POST'])
+def detect_crisis():
+    """Standalone crisis detection endpoint"""
+    try:
+        if crisis_detector is None:
+            return jsonify({'error': 'Crisis detector not loaded'}), 503
+
+        data = request.get_json()
+        text = data.get('text', '').strip()
+
+        if not text:
+            return jsonify({'error': 'No text provided'}), 400
+
+        # Run crisis detection
+        risk = crisis_detector.detect_risk(text)
+
+        # Add resources if high risk
+        if risk['risk_level'] in ['IMMINENT', 'HIGH']:
+            country = request.args.get('country', 'IN')
+            risk['resources'] = CrisisResources.get_resources(country)
+
+        return jsonify(risk), 200
+
+    except Exception as e:
+        logger.error(f"Crisis detection error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/crisis/resources', methods=['GET'])
+def get_crisis_resources():
+    """Get crisis hotlines by country"""
+    try:
+        country = request.args.get('country', 'IN').upper()
+        resources = CrisisResources.get_resources(country)
+        return jsonify(resources), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ========== OTHER ENDPOINTS (UNCHANGED) ==========
 
 
 @app.route('/api/rewrite', methods=['POST'])
@@ -440,7 +532,7 @@ def upload_file():
     """File upload endpoint for batch analysis"""
     try:
         if model is None:
-            return jsonify({'error': 'Model not loaded. Please restart the server.'}), 503
+            return jsonify({'error': 'Model not loaded'}), 503
 
         if 'file' not in request.files:
             return jsonify({'error': 'No file uploaded'}), 400
@@ -490,9 +582,6 @@ def upload_file():
                 'categories': {k: round(float(v), 3) for k, v in analysis.items()}
             })
 
-        logger.info(
-            f"File upload analysis complete: {len(results)} lines analyzed")
-
         return jsonify({
             'success': True,
             'filename': filename,
@@ -515,77 +604,74 @@ def get_stats():
     return jsonify({
         'toxic_words_count': len(TOXIC_WORDS),
         'supported_categories': [
-            'toxicity',
-            'severe_toxicity',
-            'obscene',
-            'threat',
-            'insult',
-            'identity_attack',
-            'sexual_explicit'
+            'toxicity', 'severe_toxicity', 'obscene', 'threat',
+            'insult', 'identity_attack', 'sexual_explicit'
         ],
         'max_text_length': 5000,
         'max_file_size': '16 MB',
         'supported_file_types': list(ALLOWED_EXTENSIONS),
         'sentiment_labels': ['Positive', 'Negative', 'Neutral'],
         'rewriter_available': rewriter is not None,
-        'groq_available': rewriter.groq.is_available if rewriter else False
+        'groq_available': rewriter.groq.is_available if rewriter else False,
+        'crisis_detection_available': crisis_detector is not None,
+        'crisis_risk_levels': ['LOW', 'MEDIUM', 'HIGH', 'IMMINENT']
     })
 
 
 @app.errorhandler(404)
 def not_found(e):
-    """Handle 404 errors"""
     return jsonify({'error': 'Endpoint not found'}), 404
 
 
 @app.errorhandler(413)
 def request_entity_too_large(e):
-    """Handle file too large errors"""
     return jsonify({'error': 'File too large. Maximum size is 16 MB'}), 413
 
 
 @app.errorhandler(500)
 def internal_error(e):
-    """Handle 500 errors"""
     logger.error(f"Internal server error: {str(e)}")
     return jsonify({'error': 'Internal server error'}), 500
 
+# ========== MAIN ENTRY POINT ==========
 
-# ✅ FIXED: Single entry point with proper port configuration
+
 if __name__ == '__main__':
     print("="*70)
-    print("🛡️  TOXICITY DETECTION & AI REWRITING SYSTEM")
+    print("🛡️  TOXICITY DETECTION + MENTAL HEALTH CRISIS SYSTEM")
     print("="*70)
 
     # Load models on startup
     detoxify_loaded = load_model()
     rewriter_loaded = load_rewriter()
+    crisis_loaded = load_crisis_detector()
 
     if detoxify_loaded:
-        # Get port from environment variable (Hugging Face sets PORT=7860)
         port = int(os.environ.get('PORT', 7860))
 
         print("\n✅ Server ready!")
         print(f"🌐 Access: http://localhost:{port}")
         print(f"📊 Health check: http://localhost:{port}/api/health")
         print(f"📈 Stats: http://localhost:{port}/api/stats")
-        print("📁 File Upload: Supports .txt and .pdf (max 16 MB)")
 
         if rewriter_loaded:
             groq_status = "✅ Ready" if (
                 rewriter and rewriter.groq.is_available) else "⚠️  Fallback to Rules"
             print(f"🤖 AI Rewriter: {groq_status}")
         else:
-            print("🤖 AI Rewriter: ⚠️  Not available (check .env file)")
+            print("🤖 AI Rewriter: ⚠️  Not available")
+
+        if crisis_loaded:
+            print("🚨 Crisis Detection: ✅ Ready")
+        else:
+            print("🚨 Crisis Detection: ⚠️  Not available")
 
         print("\n" + "="*70 + "\n")
 
-        # ✅ Run Flask app on port 7860 for Hugging Face
         app.run(
             host='0.0.0.0',
             port=port,
-            debug=False  # Turn off debug mode for production
+            debug=False
         )
     else:
         print("\n❌ Failed to start server - Model loading failed")
-        print("Please check if detoxify is installed correctly")

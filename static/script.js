@@ -1,7 +1,7 @@
 // ====================================
 // TOXICITY DETECTION - COMPLETE SYSTEM
-// With Authentication, History, Favorites
-// Version: 2.1 - FIXED TOKEN ISSUE
+// With Authentication, History, Favorites, Crisis Detection
+// Version: 2.3 - IMPROVED HOTLINE UI
 // ====================================
 
 // ====================================
@@ -13,7 +13,7 @@ let currentRecordId = null;
 
 // Initialize app on page load
 document.addEventListener("DOMContentLoaded", () => {
-  console.log("✅ Toxicity Detection System v2.1 loaded");
+  console.log("✅ Toxicity Detection System v2.3 loaded");
   checkAuthStatus();
   initializeFileUpload();
 });
@@ -22,7 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
 // AUTH STATUS CHECK
 // ====================================
 function checkAuthStatus() {
-  const token = localStorage.getItem("token"); // ← FIXED: Use "token" not "authToken"
+  const token = localStorage.getItem("token");
   const userEmail = localStorage.getItem("userEmail");
 
   if (token && userEmail) {
@@ -30,7 +30,6 @@ function checkAuthStatus() {
     currentUser = { email: userEmail };
     updateUIForLoggedInUser();
     console.log("✅ User logged in:", currentUser.email);
-    console.log("✅ Token found:", authToken ? "YES" : "NO");
   } else {
     authToken = null;
     currentUser = null;
@@ -40,7 +39,6 @@ function checkAuthStatus() {
 }
 
 function updateUIForLoggedInUser() {
-  // Show user menu, hide guest menu
   const guestMenu = document.getElementById("guestMenu");
   const userMenu = document.getElementById("userMenu");
   const userName = document.getElementById("userName");
@@ -49,11 +47,9 @@ function updateUIForLoggedInUser() {
   if (userMenu) userMenu.style.display = "flex";
   if (userName) userName.textContent = currentUser.email.split("@")[0];
 
-  // Hide login reminder
   const loginReminder = document.getElementById("loginReminder");
   if (loginReminder) loginReminder.style.display = "none";
 
-  // Show favorite button if results are visible
   const results = document.getElementById("results");
   if (results && results.style.display !== "none") {
     const favoriteBtn = document.getElementById("favoriteBtn");
@@ -62,18 +58,15 @@ function updateUIForLoggedInUser() {
 }
 
 function updateUIForGuestUser() {
-  // Show guest menu, hide user menu
   const guestMenu = document.getElementById("guestMenu");
   const userMenu = document.getElementById("userMenu");
 
   if (guestMenu) guestMenu.style.display = "flex";
   if (userMenu) userMenu.style.display = "none";
 
-  // Show login reminder
   const loginReminder = document.getElementById("loginReminder");
   if (loginReminder) loginReminder.style.display = "flex";
 
-  // Hide favorite button
   const favoriteBtn = document.getElementById("favoriteBtn");
   if (favoriteBtn) favoriteBtn.style.display = "none";
 }
@@ -89,12 +82,8 @@ async function apiCall(endpoint, method = "GET", body = null) {
     },
   };
 
-  // Add auth token if available
   if (authToken) {
     options.headers["Authorization"] = `Bearer ${authToken}`;
-    console.log(`🔑 Sending request to ${endpoint} with token`);
-  } else {
-    console.log(`🔓 Sending request to ${endpoint} WITHOUT token`);
   }
 
   if (body) {
@@ -103,7 +92,6 @@ async function apiCall(endpoint, method = "GET", body = null) {
 
   const response = await fetch(endpoint, options);
 
-  // Handle non-JSON responses
   let data;
   try {
     data = await response.json();
@@ -112,9 +100,7 @@ async function apiCall(endpoint, method = "GET", body = null) {
   }
 
   if (!response.ok) {
-    // Handle token expiration
     if (response.status === 401 && authToken) {
-      console.warn("⚠️ Token expired or invalid, logging out...");
       logout();
       showError("Session expired. Please login again.");
     }
@@ -138,7 +124,6 @@ function closeLoginModal() {
   if (modal) modal.style.display = "none";
   if (form) form.reset();
 
-  // Remove any error messages
   const errorMsg = form?.querySelector(".modal-error-message");
   if (errorMsg) errorMsg.remove();
 }
@@ -154,7 +139,6 @@ function closeRegisterModal() {
   if (modal) modal.style.display = "none";
   if (form) form.reset();
 
-  // Remove any error messages
   const errorMsg = form?.querySelector(".modal-error-message");
   if (errorMsg) errorMsg.remove();
 }
@@ -178,7 +162,6 @@ async function handleLogin(event) {
   const email = document.getElementById("loginEmail").value;
   const password = document.getElementById("loginPassword").value;
 
-  // Disable submit button during login
   const submitBtn = event.target.querySelector('button[type="submit"]');
   const originalText = submitBtn.innerHTML;
   submitBtn.disabled = true;
@@ -188,24 +171,17 @@ async function handleLogin(event) {
   try {
     const data = await apiCall("/api/auth/login", "POST", { email, password });
 
-    // Store token and user info - FIXED: Use "token" key consistently
     localStorage.setItem("token", data.access_token);
     localStorage.setItem("userEmail", email);
     authToken = data.access_token;
     currentUser = { email };
 
-    console.log("✅ Login successful! Token saved:", authToken ? "YES" : "NO");
-
-    // Update UI
     updateUIForLoggedInUser();
     closeLoginModal();
     showSuccessMessage("✅ Login successful! Welcome back!");
   } catch (error) {
-    // Display error in modal
     showModalError("loginForm", "Invalid email or password. Please try again.");
-    console.error("Login error:", error);
   } finally {
-    // Re-enable button
     submitBtn.disabled = false;
     submitBtn.innerHTML = originalText;
   }
@@ -223,19 +199,16 @@ async function handleRegister(event) {
     "registerPasswordConfirm"
   ).value;
 
-  // Validate passwords match
   if (password !== confirmPassword) {
     showModalError("registerForm", "Passwords do not match");
     return;
   }
 
-  // Validate password length
   if (password.length < 8) {
     showModalError("registerForm", "Password must be at least 8 characters");
     return;
   }
 
-  // Disable submit button during registration
   const submitBtn = event.target.querySelector('button[type="submit"]');
   const originalText = submitBtn.innerHTML;
   submitBtn.disabled = true;
@@ -248,21 +221,17 @@ async function handleRegister(event) {
     closeRegisterModal();
     showSuccessMessage("✅ Account created! Please login.");
 
-    // Auto-open login modal
     setTimeout(() => {
       openLoginModal();
       const loginEmail = document.getElementById("loginEmail");
       if (loginEmail) loginEmail.value = email;
     }, 1500);
   } catch (error) {
-    // Display error in modal
     showModalError(
       "registerForm",
       error.message || "Registration failed. Please try again."
     );
-    console.error("Registration error:", error);
   } finally {
-    // Re-enable button
     submitBtn.disabled = false;
     submitBtn.innerHTML = originalText;
   }
@@ -275,24 +244,16 @@ function showModalError(formId, message) {
   const form = document.getElementById(formId);
   if (!form) return;
 
-  // Remove existing error if present
   const existingError = form.querySelector(".modal-error-message");
-  if (existingError) {
-    existingError.remove();
-  }
+  if (existingError) existingError.remove();
 
-  // Create error message element
   const errorDiv = document.createElement("div");
   errorDiv.className = "modal-error-message";
   errorDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
 
-  // Insert at the top of the form
   form.insertBefore(errorDiv, form.firstChild);
-
-  // Shake animation
   errorDiv.style.animation = "shake 0.5s ease";
 
-  // Auto-remove after 5 seconds
   setTimeout(() => {
     errorDiv.style.opacity = "0";
     setTimeout(() => errorDiv.remove(), 300);
@@ -305,7 +266,7 @@ function showModalError(formId, message) {
 function logout() {
   if (!confirm("Are you sure you want to logout?")) return;
 
-  localStorage.removeItem("token"); // ← FIXED: Use "token" not "authToken"
+  localStorage.removeItem("token");
   localStorage.removeItem("userEmail");
   authToken = null;
   currentUser = null;
@@ -313,11 +274,9 @@ function logout() {
   updateUIForGuestUser();
   showSuccessMessage("👋 Logged out successfully");
 
-  // Close history panel if open
   const historyPanel = document.getElementById("historyPanel");
   if (historyPanel) historyPanel.classList.remove("active");
 
-  // Clear current results
   const results = document.getElementById("results");
   if (results) results.style.display = "none";
 }
@@ -357,14 +316,8 @@ async function analyzeText() {
     return;
   }
 
-  // Check authentication status before analyzing
   checkAuthStatus();
 
-  console.log("🔍 Starting analysis...");
-  console.log("👤 User:", currentUser ? currentUser.email : "Guest");
-  console.log("🔑 Token:", authToken ? "Present" : "Missing");
-
-  // Show loading
   document.getElementById("loading").style.display = "block";
   document.getElementById("results").style.display = "none";
   document.getElementById("errorMessage").style.display = "none";
@@ -372,21 +325,14 @@ async function analyzeText() {
   try {
     const data = await apiCall("/api/analyze", "POST", { text });
 
-    console.log("✅ Analysis complete!");
-    console.log("📝 Record ID:", data.record_id);
-
-    // Store record ID for favorites
     currentRecordId = data.record_id;
-
     displayResults(data);
 
-    // Show success message if logged in and history saved
     if (authToken && data.record_id) {
       showSuccessMessage("✅ Analysis complete! Saved to history.");
     }
   } catch (error) {
     showError("An error occurred: " + error.message);
-    console.error("Analysis error:", error);
   } finally {
     document.getElementById("loading").style.display = "none";
   }
@@ -398,6 +344,11 @@ async function analyzeText() {
 function displayResults(data) {
   const results = document.getElementById("results");
   results.style.display = "block";
+
+  // ✅ Check for mental health crisis FIRST
+  if (data.crisis_risk && data.mental_health_warning) {
+    displayCrisisWarning(data.crisis_risk, data.crisis_resources);
+  }
 
   // Status Banner
   const statusBanner = document.getElementById("statusBanner");
@@ -436,7 +387,7 @@ function displayResults(data) {
     displayFlaggedCategories(data.categories_flagged);
   }
 
-  // Display toxic words if found
+  // Display toxic words
   if (data.toxic_words_found && data.toxic_words_found.length > 0) {
     displayToxicWords(data.toxic_words_found);
   }
@@ -452,15 +403,225 @@ function displayResults(data) {
 }
 
 // ====================================
+// ✅ IMPROVED: DISPLAY CRISIS WARNING WITH BETTER HOTLINE UI
+// ====================================
+function displayCrisisWarning(crisisRisk, resources) {
+  // Remove any existing crisis warning
+  const existingWarning = document.getElementById("crisisWarningBanner");
+  if (existingWarning) existingWarning.remove();
+
+  // Create crisis warning banner
+  const warningDiv = document.createElement("div");
+  warningDiv.id = "crisisWarningBanner";
+  warningDiv.className = "crisis-warning-banner";
+  warningDiv.style.cssText = `
+    background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+    color: white;
+    padding: 30px;
+    border-radius: 12px;
+    margin-bottom: 25px;
+    box-shadow: 0 8px 25px rgba(255, 68, 68, 0.4);
+    animation: pulse 2s infinite ease-in-out;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+  `;
+
+  // Build improved hotlines grid
+  let hotlinesHTML = "";
+  if (resources && resources.hotlines) {
+    hotlinesHTML = `
+      <div style="background: white; color: #333; padding: 25px; border-radius: 12px; margin-top: 25px;">
+        <h3 style="margin: 0 0 20px 0; color: #cc0000; font-size: 1.3rem;">
+          <i class="fas fa-phone-alt" style="margin-right: 10px;"></i>24/7 CRISIS HOTLINES
+        </h3>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
+    `;
+
+    // Suicide Prevention Hotline (Primary - Highlighted)
+    if (resources.hotlines.suicide_prevention) {
+      const sp = resources.hotlines.suicide_prevention;
+      hotlinesHTML += `
+        <div style="
+          background: linear-gradient(135deg, #ff6b6b 0%, #ff5252 100%);
+          color: white;
+          padding: 20px;
+          border-radius: 10px;
+          box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+          border: 2px solid rgba(255, 255, 255, 0.2);
+          transform: scale(1.05);
+        ">
+          <div style="font-size: 0.85rem; opacity: 0.9; margin-bottom: 10px;">
+            <i class="fas fa-exclamation-circle"></i> IMMEDIATE HELP
+          </div>
+          <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 8px;">
+            ${sp.name || "Suicide Prevention"}
+          </div>
+          <a href="tel:${sp.number}" style="
+            display: inline-block;
+            background: white;
+            color: #ff5252;
+            padding: 12px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+          " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+            <i class="fas fa-phone"></i> ${sp.number}
+          </a>
+        </div>
+      `;
+    }
+
+    // National Emergency Hotline
+    if (resources.hotlines.emergency) {
+      const em = resources.hotlines.emergency;
+      hotlinesHTML += `
+        <div style="
+          background: linear-gradient(135deg, #ffa500 0%, #ff8c00 100%);
+          color: white;
+          padding: 20px;
+          border-radius: 10px;
+          box-shadow: 0 4px 15px rgba(255, 165, 0, 0.3);
+          border: 2px solid rgba(255, 255, 255, 0.2);
+        ">
+          <div style="font-size: 0.85rem; opacity: 0.9; margin-bottom: 10px;">
+            <i class="fas fa-siren"></i> EMERGENCY
+          </div>
+          <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 8px;">
+            ${em.name || "Emergency Services"}
+          </div>
+          <a href="tel:${em.number}" style="
+            display: inline-block;
+            background: white;
+            color: #ff8c00;
+            padding: 12px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+          " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+            <i class="fas fa-phone"></i> ${em.number}
+          </a>
+        </div>
+      `;
+    }
+
+    // Mental Health Support Hotline
+    if (resources.hotlines.mental_health) {
+      const mh = resources.hotlines.mental_health;
+      hotlinesHTML += `
+        <div style="
+          background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+          color: white;
+          padding: 20px;
+          border-radius: 10px;
+          box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+          border: 2px solid rgba(255, 255, 255, 0.2);
+        ">
+          <div style="font-size: 0.85rem; opacity: 0.9; margin-bottom: 10px;">
+            <i class="fas fa-heart"></i> MENTAL HEALTH
+          </div>
+          <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 8px;">
+            ${mh.name || "Mental Health Support"}
+          </div>
+          <a href="tel:${mh.number}" style="
+            display: inline-block;
+            background: white;
+            color: #1d4ed8;
+            padding: 12px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+          " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+            <i class="fas fa-phone"></i> ${mh.number}
+          </a>
+        </div>
+      `;
+    }
+
+    hotlinesHTML += `
+        </div>
+      </div>
+    `;
+  }
+
+  warningDiv.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
+      <i class="fas fa-exclamation-triangle" style="font-size: 3.5rem; animation: shake 0.5s infinite;"></i>
+      <div>
+        <h2 style="margin: 0 0 5px 0; font-size: 2rem; font-weight: bold;">
+          ⚠️ MENTAL HEALTH SUPPORT AVAILABLE
+        </h2>
+        <p style="margin: 0; font-size: 1.15rem; opacity: 0.95; font-weight: 500;">
+          We detected signs of emotional distress. <strong>Professional help is available 24/7.</strong>
+        </p>
+      </div>
+    </div>
+    
+    <div style="background: rgba(255, 255, 255, 0.15); padding: 18px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid rgba(255, 255, 255, 0.8);">
+      <p style="margin: 0; font-size: 1.05rem; line-height: 1.6;">
+        <strong style="font-size: 1.1rem;">Risk Assessment:</strong><br>
+        <strong style="background: rgba(255, 255, 255, 0.2); padding: 6px 12px; border-radius: 6px; display: inline-block; margin-top: 8px;">
+          ${crisisRisk.risk_level} RISK - ${(
+    crisisRisk.confidence * 100
+  ).toFixed(0)}% Confidence
+        </strong>
+      </p>
+    </div>
+
+    ${hotlinesHTML}
+
+    <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 10px; margin-top: 20px; border-top: 2px solid rgba(255, 255, 255, 0.3);">
+      <p style="margin: 0; font-size: 0.95rem; opacity: 0.9;">
+        <i class="fas fa-info-circle"></i> <strong>If you're in immediate danger:</strong> Call your local emergency number or visit the nearest hospital immediately.
+      </p>
+    </div>
+  `;
+
+  // Add CSS animation for pulse effect
+  if (!document.getElementById("crisisAnimationStyle")) {
+    const style = document.createElement("style");
+    style.id = "crisisAnimationStyle";
+    style.textContent = `
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 8px 25px rgba(255, 68, 68, 0.4); }
+        50% { transform: scale(1.02); box-shadow: 0 12px 35px rgba(255, 68, 68, 0.6); }
+      }
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-5px); }
+        75% { transform: translateX(5px); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Insert at the top of results
+  const results = document.getElementById("results");
+  results.insertBefore(warningDiv, results.firstChild);
+
+  // Log for monitoring
+  console.warn(
+    `🚨 MENTAL HEALTH WARNING: ${crisisRisk.risk_level} - Confidence: ${(
+      crisisRisk.confidence * 100
+    ).toFixed(0)}%`
+  );
+}
+
+// ====================================
 // DISPLAY SENTIMENT ANALYSIS
 // ====================================
 function displaySentiment(original, cleaned) {
   const sentimentSection = document.getElementById("sentimentSection");
 
-  if (!sentimentSection) {
-    console.warn("Sentiment section not found in HTML");
-    return;
-  }
+  if (!sentimentSection) return;
 
   sentimentSection.style.display = "block";
 
@@ -492,7 +653,6 @@ function displaySentiment(original, cleaned) {
       </div>
   `;
 
-  // Only show cleaned sentiment if different
   if (
     cleaned.label !== original.label ||
     Math.abs(cleaned.polarity - original.polarity) > 0.1
@@ -533,11 +693,7 @@ function displaySentiment(original, cleaned) {
 // ====================================
 function displayScores(scores) {
   const scoresContainer = document.getElementById("scoresContainer");
-
-  if (!scoresContainer) {
-    console.warn("Scores container not found");
-    return;
-  }
+  if (!scoresContainer) return;
 
   const sortedScores = Object.entries(scores).sort((a, b) => b[1] - a[1]);
 
@@ -570,7 +726,6 @@ function displayScores(scores) {
 // ====================================
 function displayFlaggedCategories(flagged) {
   const flaggedSection = document.getElementById("flaggedSection");
-
   if (!flaggedSection) return;
 
   if (flagged && flagged.length > 0) {
@@ -595,7 +750,6 @@ function displayFlaggedCategories(flagged) {
 // ====================================
 function displayToxicWords(words) {
   const toxicWordsSection = document.getElementById("toxicWordsSection");
-
   if (!toxicWordsSection) return;
 
   if (words && words.length > 0) {
@@ -649,7 +803,6 @@ function copySuggestion() {
       showSuccessMessage("✅ AI suggestion copied to clipboard!");
     })
     .catch((err) => {
-      console.error("Failed to copy:", err);
       showError("Failed to copy text");
     });
 }
@@ -661,7 +814,6 @@ async function toggleHistory() {
   const historyPanel = document.getElementById("historyPanel");
 
   if (!historyPanel) {
-    console.error("History panel element not found in HTML");
     showError("History panel not found. Please refresh the page.");
     return;
   }
@@ -674,7 +826,6 @@ async function toggleHistory() {
 
   historyPanel.classList.toggle("active");
 
-  // Load history only if panel is now visible
   if (historyPanel.classList.contains("active")) {
     await loadHistory();
   }
@@ -682,26 +833,16 @@ async function toggleHistory() {
 
 async function loadHistory(filter = "all") {
   const historyContent = document.getElementById("historyContent");
-
-  if (!historyContent) {
-    console.error("History content element not found");
-    return;
-  }
+  if (!historyContent) return;
 
   historyContent.innerHTML =
     '<div class="history-loading"><div class="spinner"></div><p>Loading history...</p></div>';
 
   try {
-    console.log("Fetching history with filter:", filter);
-
     let url = "/api/history";
-    if (filter !== "all") {
-      url += `?filter=${filter}`;
-    }
+    if (filter !== "all") url += `?filter=${filter}`;
 
     const data = await apiCall(url);
-
-    console.log("History data received:", data);
 
     if (data.history && data.history.length > 0) {
       displayHistoryRecords(data.history);
@@ -710,17 +851,14 @@ async function loadHistory(filter = "all") {
         <div style="text-align: center; padding: 60px 20px;">
           <i class="fas fa-history" style="font-size: 4rem; color: var(--text-secondary); opacity: 0.3;"></i>
           <p style="color: var(--text-secondary); margin-top: 20px; font-size: 1.1rem;">No analysis history yet</p>
-          <p style="color: var(--text-secondary); margin-top: 10px; font-size: 0.9rem;">Start analyzing text to build your history!</p>
         </div>
       `;
     }
   } catch (error) {
-    console.error("Failed to load history:", error);
     historyContent.innerHTML = `
       <div style="text-align: center; padding: 40px 20px;">
         <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: var(--toxic);"></i>
         <p style="color: var(--toxic); margin-top: 20px;">Failed to load history</p>
-        <p style="color: var(--text-secondary); margin-top: 10px; font-size: 0.9rem;">${error.message}</p>
         <button onclick="loadHistory()" style="margin-top: 20px; padding: 10px 20px; background: var(--gold); color: var(--bg-dark); border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
           <i class="fas fa-redo"></i> Retry
         </button>
@@ -731,12 +869,10 @@ async function loadHistory(filter = "all") {
 
 function displayHistoryRecords(records) {
   const historyContent = document.getElementById("historyContent");
-
   if (!historyContent) return;
 
   let html = "";
   records.forEach((record) => {
-    // Fix date parsing - use created_at or timestamp
     const dateStr = record.created_at || record.timestamp;
     const date = dateStr
       ? new Date(dateStr).toLocaleDateString()
@@ -780,26 +916,19 @@ function displayHistoryRecords(records) {
 }
 
 async function loadHistoryRecord(recordId) {
-  console.log("Loading record:", recordId);
   showSuccessMessage("Loading analysis record...");
 
   try {
     const data = await apiCall(`/api/history/${recordId}`);
 
-    console.log("Record data received:", data);
-
-    // Populate the text input with the historical text
     textInput.value = data.original_text;
     textInput.dispatchEvent(new Event("input"));
 
-    // Display the results - the backend now returns the COMPLETE record
     displayResults(data);
 
-    // Close history panel
     const historyPanel = document.getElementById("historyPanel");
     if (historyPanel) historyPanel.classList.remove("active");
 
-    // Scroll to results
     document.getElementById("results").scrollIntoView({ behavior: "smooth" });
   } catch (error) {
     showError("Failed to load record: " + error.message);
@@ -833,7 +962,6 @@ async function deleteHistoryRecord(recordId) {
 }
 
 function filterHistory(filter) {
-  // Update active filter button
   document.querySelectorAll(".filter-btn").forEach((btn) => {
     btn.classList.remove("active");
   });
@@ -897,7 +1025,6 @@ function escapeHtml(text) {
 function showError(message) {
   const errorDiv = document.getElementById("errorMessage");
   if (!errorDiv) {
-    console.error("Error div not found:", message);
     alert("Error: " + message);
     return;
   }
@@ -1034,7 +1161,6 @@ document.addEventListener("keydown", (e) => {
     analyzeText();
   }
 
-  // ESC to close modals
   if (e.key === "Escape") {
     closeLoginModal();
     closeRegisterModal();
@@ -1050,10 +1176,8 @@ function initializeFileUpload() {
 
   if (!dropzone || !fileInput) return;
 
-  // Click to browse
   dropzone.addEventListener("click", () => fileInput.click());
 
-  // Drag and drop
   dropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
     dropzone.style.borderColor = "var(--gold)";
@@ -1209,5 +1333,5 @@ function exportResults() {
 // ====================================
 // INITIALIZATION COMPLETE
 // ====================================
-console.log("✅ Toxicity Detection System v2.1 loaded successfully!");
-console.log("🔧 Token management fixed - history will now save!");
+console.log("✅ Toxicity Detection System v2.3 loaded successfully!");
+console.log("🚨 Mental health crisis detection with improved UI enabled!");
